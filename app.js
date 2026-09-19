@@ -575,7 +575,6 @@ function homeSheet(entryId, defaultType){
   const x = state.homeLedger.find(e => e.id === entryId);
   const t = totals();
   const type = x ? x.type : (defaultType || "out");
-  const picked = new Set((x?.note || "").split(",").map(s => s.trim()).filter(Boolean));
   openSheet(`<h3>${x ? "แก้รายการ" : "จดบัญชีเงินบ้าน"}</h3>
     <div class="hint info">ตอนนี้ร้านมีเงินสดอยู่ประมาณ <b class="num">${baht(t.cash)}</b></div>
     <div class="field"><label>รายการนี้เป็น</label>
@@ -585,9 +584,10 @@ function homeSheet(entryId, defaultType){
       </div>
     </div>
     <div class="field"><label for="f-amt">จำนวนเงิน (บาท)</label><input class="in huge" id="f-amt" inputmode="numeric" autofocus placeholder="0" value="${x ? fmt(x.amount) : ""}"></div>
-    <div class="field"><label>รายการ (ไม่ต้องเลือกก็ได้)</label>
-      <div class="chips" id="in-chips" ${type === "in" ? "" : "hidden"}>${HOME_IN_KINDS.map(k => `<button class="chip" type="button" data-act="chip" aria-pressed="${picked.has(k)}">${k}</button>`).join("")}</div>
-      <div class="chips" id="out-chips" ${type === "out" ? "" : "hidden"}>${HOME_OUT_KINDS.map(k => `<button class="chip" type="button" data-act="chip" aria-pressed="${picked.has(k)}">${k}</button>`).join("")}</div>
+    <div class="field"><label for="f-note">ค่าอะไร (พิมพ์เองได้ ไม่ต้องพิมพ์ก็ได้)</label>
+      <input class="in" id="f-note" placeholder="เช่น ค่าไฟเดือนนี้, ซื้อของใช้ในบ้าน" value="${esc(x?.note || "")}">
+      <div class="chips" id="in-chips" ${type === "in" ? "" : "hidden"}>${HOME_IN_KINDS.map(k => `<button class="chip" type="button" data-act="home-chip">${k}</button>`).join("")}</div>
+      <div class="chips" id="out-chips" ${type === "out" ? "" : "hidden"}>${HOME_OUT_KINDS.map(k => `<button class="chip" type="button" data-act="home-chip">${k}</button>`).join("")}</div>
     </div>
     <div class="field"><label for="f-date">วันที่</label><input class="in" type="date" id="f-date" value="${x ? x.date : today()}"></div>
     <div class="foot">${x ? `<button class="btn danger" data-act="del-home" data-id="${x.id}">ลบ</button>` : `<button class="btn soft" data-act="close">ยกเลิก</button>`}
@@ -641,6 +641,14 @@ document.addEventListener("click", async ev => {
   if (a === "edit-ev") return newEventSheet(el.dataset.ev);
   if (a === "share") return shareSheet(state.events.find(e => e.id === el.dataset.ev));
   if (a === "chip") { el.setAttribute("aria-pressed", el.getAttribute("aria-pressed") !== "true"); return; }
+  if (a === "home-chip") {
+    const inp = $("#f-note"); if (!inp) return;
+    const label = el.textContent, current = inp.value.trim();
+    if (!current) inp.value = label;
+    else if (!current.split(",").map(s => s.trim()).includes(label)) inp.value = current + ", " + label;
+    inp.focus();
+    return;
+  }
   if (a === "ledger-type") {
     document.querySelectorAll('.seg-btn').forEach(b => b.setAttribute("aria-pressed", "false"));
     el.setAttribute("aria-pressed", "true");
@@ -694,7 +702,7 @@ document.addEventListener("click", async ev => {
     const amt = toNum($("#f-amt").value), date = $("#f-date").value;
     const type = document.querySelector('.seg-btn[aria-pressed="true"]')?.dataset.type || "out";
     if (!amt || !date) { return; }
-    const note = [...document.querySelectorAll(`#${type}-chips .chip[aria-pressed="true"]`)].map(c => c.textContent).join(", ");
+    const note = ($("#f-note")?.value || "").trim();
     const rec = { id: el.dataset.id || uid(), date, amount: amt, note, type };
     const i = state.homeLedger.findIndex(x => x.id === rec.id); if (i > -1) state.homeLedger[i] = rec; else state.homeLedger.push(rec);
     return closeSheet(() => { const bal = totals().home.balance; commit(bal >= 0 ? `บันทึกแล้ว บัญชีเงินบ้านคงเหลือ ${baht(bal)}` : `บันทึกแล้ว บัญชีเงินบ้านติดลบ ${baht(-bal)}`); });
