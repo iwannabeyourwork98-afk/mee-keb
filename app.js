@@ -17,6 +17,7 @@ const addDays = (s, n) => { const d = new Date(s + "T12:00:00"); d.setDate(d.get
 const thDate = s => s ? new Date(s + "T12:00:00").toLocaleDateString("th-TH", { weekday:"short", day:"numeric", month:"short" }) : "";
 const thShort = s => s ? new Date(s + "T12:00:00").toLocaleDateString("th-TH", { day:"numeric", month:"short" }) : "";
 const toNum = v => { const t = String(v ?? "").replace(/[,\s฿]/g, ""); if (t === "") return null; const n = Number(t); return isFinite(n) && n >= 0 ? n : null; };
+const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* ---------- sample (shown until mom starts for real) ---------- */
 function makeSample(){
@@ -46,9 +47,9 @@ function makeSample(){
     { id: uid(), date: addDays(s3, 1), amount: 15000, note: "ถอนจากร้าน", type: "in" },
     { id: uid(), date: addDays(s3, 2), amount: 3500, note: "ค่ากินใช้", type: "out" },
   ];
-  return { settings: { costPct: 67, buyPct: 80, startBudget: 0, wagePerDay: 4000, dream: "บ้านของเรา", notes: ["แม่สู้ๆ นะ บ้านของเราใกล้เข้ามาทุกวัน","ซื้อของพอดีงบ เงินก็เหลือเก็บเองนะแม่","ขอบคุณที่เหนื่อยเพื่อพวกเรานะแม่"] }, events: [e1, e2, e3], purchases, homeLedger };
+  return { settings: { costPct: 67, buyPct: 80, startBudget: 0, wagePerDay: 4000 }, events: [e1, e2, e3], purchases, homeLedger };
 }
-const blank = () => ({ settings: { costPct: 67, buyPct: 80, startBudget: 0, wagePerDay: 4000, dream: "บ้านของเรา", notes: ["แม่สู้ๆ นะ บ้านของเราใกล้เข้ามาทุกวัน","ซื้อของพอดีงบ เงินก็เหลือเก็บเองนะแม่","ขอบคุณที่เหนื่อยเพื่อพวกเรานะแม่"] }, events: [], purchases: [], homeLedger: [] });
+const blank = () => ({ settings: { costPct: 67, buyPct: 80, startBudget: 0, wagePerDay: 4000 }, events: [], purchases: [], homeLedger: [] });
 
 /* ---------- state & storage ---------- */
 const LS_API_URL = "momShopApiUrl";
@@ -59,8 +60,6 @@ try { const raw = localStorage.getItem(LS_KEY); if (raw) state = JSON.parse(raw)
 if (!state || !state.events) { state = makeSample(); isSample = true; }
 if (!Array.isArray(state.homeLedger)) state.homeLedger = (state.homeExpenses || []).map(x => ({ ...x, type: "out" }));
 if (state.settings.wagePerDay == null) state.settings.wagePerDay = 4000;
-if (state.settings.dream == null) state.settings.dream = "บ้านของเรา";
-if (!Array.isArray(state.settings.notes)) state.settings.notes = ["แม่สู้ๆ นะ บ้านของเราใกล้เข้ามาทุกวัน","ซื้อของพอดีงบ เงินก็เหลือเก็บเองนะแม่","ขอบคุณที่เหนื่อยเพื่อพวกเรานะแม่"];
 
 function persist(){
   if (isSample) return;
@@ -174,10 +173,32 @@ function render(){
   const picked = view.eventId && state.events.find(e => e.id === view.eventId);
   if (picked) body = eventPage(picked, false);
   else if (view.tab === "dash") body = dashView();
+  else if (view.tab === "ledger") body = ledgerView();
   else if (view.tab === "events") body = eventsView();
   else if (view.tab === "settings") body = settingsView();
   else body = homeView();
   $("#app").innerHTML = `<header class="top"><h1>มีเก็บ</h1><span class="sub">${thDate(today())}</span></header>${banner}${body}`;
+  requestAnimationFrame(() => { updateNavPill(); animateCounts(); });
+}
+
+/* ---------- ลูกเล่นเล็กๆ (GSAP, เคารพ prefers-reduced-motion) ---------- */
+function updateNavPill(){
+  const pill = $(".nav-pill"); if (!pill) return;
+  const active = document.querySelector('.nav button[aria-current="page"]') || document.querySelector('.nav button');
+  if (!active) return;
+  const navRect = active.parentElement.getBoundingClientRect(), r = active.getBoundingClientRect();
+  const x = r.left - navRect.left, w = r.width;
+  if (!window.gsap) return;
+  if (reduceMotion || pill.dataset.inited !== "1") { gsap.set(pill, { x, width: w }); pill.dataset.inited = "1"; }
+  else gsap.to(pill, { x, width: w, duration: .35, ease: "power3.out" });
+}
+function animateCounts(){
+  if (reduceMotion || !window.gsap) return;
+  document.querySelectorAll("[data-count]").forEach(el => {
+    const target = Number(el.dataset.count) || 0;
+    const obj = { v: 0 };
+    gsap.to(obj, { v: target, duration: .6, ease: "power2.out", onUpdate: () => { el.textContent = "฿" + fmt(Math.round(obj.v)); } });
+  });
 }
 
 function walletCard(t){
@@ -186,7 +207,7 @@ function walletCard(t){
   const per100 = Math.round(buyRate() * 100);
   return `<section class="tag ${over ? "over" : ""}" aria-label="งบซื้อของ">
     <div class="k">${over ? "ซื้อของเกินงบแล้ว" : "ตอนนี้ซื้อของได้อีกไม่เกิน"}</div>
-    <div class="big num">${baht(Math.abs(t.wallet))}</div>
+    <div class="big num" data-count="${Math.abs(t.wallet)}">${baht(Math.abs(t.wallet))}</div>
     <div class="meter" role="img" aria-label="ใช้งบไป ${Math.round(pct)}%"><i style="width:${pct}%"></i></div>
     <div class="row num"><span>ใช้ซื้อของไปแล้ว ${baht(t.spent)}</span><span>งบที่ได้ ${baht(t.earned)}</span></div>
     <div class="rule">${over
@@ -200,35 +221,9 @@ function homeCard(t){
   const neg = h.balance < 0;
   return `<section class="tag home ${neg ? "over" : ""}" aria-label="บัญชีเงินบ้าน">
     <div class="k">${neg ? "บัญชีเงินบ้านติดลบ" : "บัญชีเงินบ้านคงเหลือ"}</div>
-    <div class="big num">${baht(Math.abs(h.balance))}</div>
+    <div class="big num" data-count="${Math.abs(h.balance)}">${baht(Math.abs(h.balance))}</div>
     <div class="row num"><span>รับเข้ารวม ${baht(h.in)}</span><span>จ่ายออกรวม ${baht(h.out)}</span></div>
     <div class="rule">ตอนนี้ร้านมีเงินสดอยู่ประมาณ ${baht(t.cash)} · ไว้เป็นข้อมูลตัดสินใจ ไม่ได้หักจากอะไร</div>
-  </section>`;
-}
-
-/* เวอร์ชันย่อของบัญชีเงินบ้าน ใช้บนหน้าหลัก ไม่ให้แย่งพื้นที่งบซื้อของ */
-function homeMini(t){
-  const h = t.home;
-  const neg = h.balance < 0;
-  return `<section class="card">
-    <div class="h2">บัญชีเงินบ้าน <small>${neg ? "ติดลบ" : "คงเหลือ"}</small></div>
-    <div class="mini-num num ${neg ? "bad" : ""}">${baht(Math.abs(h.balance))}</div>
-    <div class="label" style="margin:-4px 0 10px">ร้านมีเงินสดอยู่ตอนนี้ ~${baht(t.cash)}</div>
-    <div class="actions">
-      <button class="btn soft" data-act="home-pay" data-type="in"><span class="plus">+</span> รับเข้า</button>
-      <button class="btn soft" data-act="home-pay" data-type="out"><span class="plus">+</span> จ่ายออก</button>
-    </div>
-  </section>`;
-}
-
-/* การ์ดความฝัน: ไม่มีตัวเลข แค่เตือนใจ ข้อความจากลูกเปลี่ยนวันละข้อความ */
-function dreamCard(){
-  const notes = (S().notes || []).filter(Boolean);
-  const dayNo = Math.floor(new Date(today() + "T12:00:00") / 864e5);
-  const msg = notes.length ? notes[dayNo % notes.length] : "";
-  return `<section class="dream" aria-label="ความฝันของเรา">
-    <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22 24 7l18 15"/><path d="M11 18v22h26V18"/><path d="M20 40V29h8v11"/><path d="M33 12V6h4v9.5"/></svg>
-    <div><div class="d-title">ความฝันของเรา: ${esc(S().dream || "บ้านของเรา")}</div>${msg ? `<div class="d-msg">“${esc(msg)}”</div>` : ""}</div>
   </section>`;
 }
 
@@ -236,28 +231,24 @@ function dreamCard(){
 function homeView(){
   const opens = openEvents();
   if (!opens.length) {
-    return `${dreamCard()}<div class="grid detail">
+    return `<div class="grid detail">
       <div class="col">
         <section class="card live"><div class="name">ตอนนี้ไม่มีงานที่กำลังขาย</div>
           <div class="meta">จะซื้อของเตรียมงานหน้าก่อนก็ได้ แค่สร้างงานไว้ก่อน แล้วจดค่าซื้อของผูกกับงานนั้นเลย งบซื้อของจะเริ่มคำนวณจากยอดขายงานนั้นให้เอง</div>
           <button class="btn primary huge-btn" data-act="new-ev"><span class="plus">+</span> สร้างงานใหม่</button></section>
-      </div>
-      <div class="col">
-        ${homeMini(totals())}
       </div>
     </div>`;
   }
   const cur = opens.find(e => e.id === view.homeEv) || opens[0];
   const switcher = opens.length > 1 ? `<div class="chips" style="margin-bottom:12px">${opens.map(e =>
     `<button class="chip" data-act="home-ev" data-ev="${e.id}" aria-pressed="${e.id === cur.id}">${esc(e.name)}</button>`).join("")}</div>` : "";
-  return dreamCard() + switcher + eventPage(cur, true);
+  return switcher + eventPage(cur, true);
 }
 
 function dashView(){
   const t = totals();
   const stockUp = t.stock > 0;
   const recentBuys = [...state.purchases].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
-  const recentHome = [...state.homeLedger].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
   return `<div class="grid home">
     <div class="col">
       <section class="card">
@@ -275,15 +266,30 @@ function dashView(){
     </div>
     <div class="col">
       ${buyBudgetList(t.evs)}
-      ${homeCard(t)}
-      ${monthTable()}
       <section class="card">
         <h2 class="h2">ซื้อของล่าสุด</h2>
         <div class="list">${recentBuys.length ? recentBuys.map(p => purchaseRow(p)).join("") : `<div class="empty">ยังไม่มีการซื้อของ</div>`}</div>
       </section>
-      <section class="card">
-        <h2 class="h2">จ่ายเรื่องบ้านล่าสุด</h2>
-        <div class="list">${recentHome.length ? recentHome.map(x => homeLedgerRow(x)).join("") : `<div class="empty">ยังไม่มีรายการในบัญชีเงินบ้าน</div>`}</div>
+    </div>
+  </div>`;
+}
+
+/* หน้าเงินบ้าน แยกออกมาต่างหาก ไม่ปนกับหน้าร้าน */
+function ledgerView(){
+  const t = totals();
+  const all = [...state.homeLedger].sort((a, b) => b.date.localeCompare(a.date));
+  return `<div class="grid detail">
+    <div class="col">
+      ${homeCard(t)}
+      <div class="actions">
+        <button class="btn primary huge-btn" data-act="home-pay" data-type="in"><span class="plus">+</span> รับเข้า</button>
+        <button class="btn soft huge-btn" data-act="home-pay" data-type="out"><span class="plus">+</span> จ่ายออก</button>
+      </div>
+      ${monthTable()}
+    </div>
+    <div class="col">
+      <section class="card"><h2 class="h2">รายการทั้งหมด <small>${all.length} รายการ</small></h2>
+        <div class="list">${all.length ? all.map(homeLedgerRow).join("") : `<div class="empty">ยังไม่มีรายการ กด "รับเข้า" หรือ "จ่ายออก" เพื่อเริ่มจด</div>`}</div>
       </section>
     </div>
   </div>`;
@@ -400,7 +406,7 @@ function eventPage(ev, home){
   const isOpen = ev.status === "open";
   const todayCard = isOpen ? `<section class="card live">
       <div class="label">ยอดขายวันนี้ · ${thDate(today())}</div>
-      <div class="today num ${todayEntry ? "" : "none"}">${todayEntry ? baht(todayEntry.amount) : "ยังไม่ได้ใส่"}</div>
+      <div class="today num ${todayEntry ? "" : "none"}"${todayEntry ? ` data-count="${todayEntry.amount}"` : ""}>${todayEntry ? baht(todayEntry.amount) : "ยังไม่ได้ใส่"}</div>
       ${todayEntry ? `<div class="label" style="margin:-4px 0 10px">กันไว้เป็นค่าแรงตัวเองวันนี้ ${baht(S().wagePerDay)} ก่อนใช้เงินร้านนะแม่</div>` : ""}
       <button class="btn primary huge-btn" data-act="sale" data-ev="${ev.id}" ${todayEntry ? `data-id="${todayEntry.id}"` : ""}><span class="plus">${todayEntry ? "✎" : "+"}</span> ${todayEntry ? "แก้ยอดขายวันนี้" : "ใส่ยอดขายวันนี้"}</button>
       <div class="pair">
@@ -409,8 +415,7 @@ function eventPage(ev, home){
       </div>
     </section>` : "";
   const buyBlock = home ? `${walletCard(eventWallet(c))}
-      <button class="btn soft huge-btn" data-act="buy" data-ev="${ev.id}"><span class="plus">+</span> บันทึกซื้อของ</button>
-      ${homeMini(totals())}` : "";
+      <button class="btn soft huge-btn" data-act="buy" data-ev="${ev.id}"><span class="plus">+</span> บันทึกซื้อของ</button>` : "";
   return `${home ? "" : `<button class="back" data-act="back">‹ กลับ</button>`}
   <div class="dhead"><div>${home ? `<div class="label">งานที่กำลังขาย</div>` : ""}<h2>${esc(ev.name)}</h2><div class="label">${esc(ev.place || "")}${ev.place && c.first ? " · " : ""}${c.first ? `${thShort(c.first)} – ${thShort(c.last)} (${c.span} วัน)` : ""}</div></div>
     <span class="pill ${ev.status}">${isOpen ? "กำลังขาย" : "จบแล้ว"}</span></div>
@@ -470,13 +475,6 @@ function settingsView(){
     ${f("wagePerDay", "ค่าแรงตัวเองต่อวัน (บาท)", "แค่ข้อความเตือนตอนใส่ยอดขาย ไม่ได้หักหรือโอนเงินให้อัตโนมัติ แม่ต้องแยกเงินเองตามนี้")}
   </section>
   <section class="card set" style="display:grid;gap:16px">
-    <h2 class="h2" style="margin:0">ความฝันและข้อความถึงแม่</h2>
-    <div class="field"><label for="s-dream">ความฝันของเรา</label>
-      <input class="in" id="s-dream" data-text="dream" value="${esc(s.dream || "")}" placeholder="เช่น บ้านของเรา"><p>ขึ้นบนหน้าหลักทุกครั้งที่แม่เปิดแอป</p></div>
-    <div class="field"><label for="s-notes">ข้อความจากลูก (บรรทัดละ 1 ข้อความ)</label>
-      <textarea class="in notes" id="s-notes" data-text="notes">${esc((s.notes || []).join("\n"))}</textarea><p>แอปจะเปลี่ยนข้อความให้วันละข้อความ</p></div>
-  </section>
-  <section class="card set" style="display:grid;gap:16px">
     <h2 class="h2" style="margin:0">เชื่อมข้อมูลออนไลน์</h2>
     <div class="field"><label for="s-api">ลิงก์เชื่อมข้อมูล (Apps Script Web App URL)</label>
       <input class="in" id="s-api" data-api="1" placeholder="https://script.google.com/macros/s/xxx/exec" value="${esc(apiUrl)}">
@@ -492,11 +490,26 @@ function settingsView(){
 /* ---------- sheets ---------- */
 function openSheet(html, onMount){
   $("#sheet-root").innerHTML = `<div class="scrim" data-act="close-bg"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`;
+  if (window.gsap && !reduceMotion) {
+    const scrim = $(".scrim"), sheet = $(".sheet");
+    gsap.set(scrim, { autoAlpha: 0 });
+    gsap.set(sheet, { y: 60, autoAlpha: 0 });
+    gsap.to(scrim, { autoAlpha: 1, duration: .2, ease: "power1.out" });
+    gsap.to(sheet, { y: 0, autoAlpha: 1, duration: .32, ease: "back.out(1.6)" });
+  }
   const first = $(".sheet [autofocus]") || $(".sheet input");
   if (onMount) onMount();
   if (first) setTimeout(() => first.focus(), 60);
 }
-function closeSheet(){ $("#sheet-root").innerHTML = ""; render(); }
+/* ปิดหน้าต่าง — ถ้าให้ after มา จะเรียกหลังปิดเสร็จ (เช่น commit หลังบันทึก) ไม่งั้นแค่ render() ปกติ */
+function closeSheet(after){
+  const scrim = $(".scrim");
+  const finish = () => { $("#sheet-root").innerHTML = ""; if (after) after(); else render(); };
+  if (!scrim || !window.gsap || reduceMotion) return finish();
+  const sheet = scrim.querySelector(".sheet");
+  gsap.to(sheet, { y: 40, autoAlpha: 0, duration: .16, ease: "power2.in" });
+  gsap.to(scrim, { autoAlpha: 0, duration: .18, ease: "power2.in", onComplete: finish });
+}
 
 function saleSheet(evId, entryId){
   const ev = state.events.find(e => e.id === evId) || openEvents()[0];
@@ -550,7 +563,7 @@ function buySheet(purchaseId, evId){
       if (!n) { $("#f-hint").innerHTML = `<div class="hint info">งานนี้ซื้อของได้อีกไม่เกิน <b class="num">${baht(base)}</b></div>`; return; }
       const left = base - n;
       $("#f-hint").innerHTML = left >= 0 ? `<div class="hint good">ซื้อแล้วงบงานนี้ยังเหลือ <b class="num">${baht(left)}</b></div>`
-        : `<div class="hint bad"><b>เกินงบงานนี้ ${baht(-left)}</b><br>ต้องขายงานนี้ได้อีก ${baht(-left / buyRate())} เงินถึงจะกลับมา ลองลดจำนวนที่ซื้อดูก่อนไหม<br>นึกถึง${esc(S().dream || "บ้านของเรา")}ก่อนนะแม่</div>`;
+        : `<div class="hint bad"><b>เกินงบงานนี้ ${baht(-left)}</b><br>ต้องขายงานนี้ได้อีก ${baht(-left / buyRate())} เงินถึงจะกลับมา ลองลดจำนวนที่ซื้อดูก่อนไหม</div>`;
     };
     $("#f-amt").addEventListener("input", upd);
     $("#f-ev").addEventListener("change", upd);
@@ -658,9 +671,9 @@ document.addEventListener("click", async ev => {
     for (const e of state.events) { const i = e.days.findIndex(d => d.id === el.dataset.id); if (i > -1) e.days.splice(i, 1); }
     const same = target.days.find(d => d.date === date);
     if (same) same.amount = amt; else target.days.push({ id: uid(), date, amount: amt });
-    $("#sheet-root").innerHTML = ""; return commit(same ? `แก้ยอด ${thShort(date)} เป็น ${baht(amt)} แล้ว` : `บันทึกยอดขาย ${baht(amt)} แล้ว`);
+    return closeSheet(() => commit(same ? `แก้ยอด ${thShort(date)} เป็น ${baht(amt)} แล้ว` : `บันทึกยอดขาย ${baht(amt)} แล้ว`));
   }
-  if (a === "del-sale") { const e = state.events.find(x => x.id === el.dataset.ev); e.days = e.days.filter(d => d.id !== el.dataset.id); $("#sheet-root").innerHTML = ""; return commit("ลบยอดขายแล้ว"); }
+  if (a === "del-sale") { const e = state.events.find(x => x.id === el.dataset.ev); e.days = e.days.filter(d => d.id !== el.dataset.id); return closeSheet(() => commit("ลบยอดขายแล้ว")); }
 
   if (a === "save-buy") {
     const amt = toNum($("#f-amt").value), date = $("#f-date").value;
@@ -671,12 +684,11 @@ document.addEventListener("click", async ev => {
     const shop = shopChip ? shopChip.dataset.shop : (shopNewOpen ? ($("#f-shop-new")?.value || "").trim() : "");
     const rec = { id: el.dataset.id || uid(), date, amount: amt, note, eventId: $("#f-ev").value || null, shop };
     const i = state.purchases.findIndex(p => p.id === rec.id); if (i > -1) state.purchases[i] = rec; else state.purchases.push(rec);
-    $("#sheet-root").innerHTML = "";
     const savedEv = state.events.find(x => x.id === rec.eventId);
     const left = savedEv ? eventWallet(evCalc(savedEv)).wallet : null;
-    return commit(left == null ? "บันทึกแล้ว" : left >= 0 ? `บันทึกแล้ว งบงานนี้เหลือ ${baht(left)}` : `บันทึกแล้ว งบงานนี้เกิน ${baht(-left)}`);
+    return closeSheet(() => commit(left == null ? "บันทึกแล้ว" : left >= 0 ? `บันทึกแล้ว งบงานนี้เหลือ ${baht(left)}` : `บันทึกแล้ว งบงานนี้เกิน ${baht(-left)}`));
   }
-  if (a === "del-buy") { state.purchases = state.purchases.filter(p => p.id !== el.dataset.id); $("#sheet-root").innerHTML = ""; return commit("ลบรายการซื้อของแล้ว"); }
+  if (a === "del-buy") { state.purchases = state.purchases.filter(p => p.id !== el.dataset.id); return closeSheet(() => commit("ลบรายการซื้อของแล้ว")); }
 
   if (a === "save-home") {
     const amt = toNum($("#f-amt").value), date = $("#f-date").value;
@@ -685,26 +697,25 @@ document.addEventListener("click", async ev => {
     const note = [...document.querySelectorAll(`#${type}-chips .chip[aria-pressed="true"]`)].map(c => c.textContent).join(", ");
     const rec = { id: el.dataset.id || uid(), date, amount: amt, note, type };
     const i = state.homeLedger.findIndex(x => x.id === rec.id); if (i > -1) state.homeLedger[i] = rec; else state.homeLedger.push(rec);
-    $("#sheet-root").innerHTML = ""; const bal = totals().home.balance;
-    return commit(bal >= 0 ? `บันทึกแล้ว บัญชีเงินบ้านคงเหลือ ${baht(bal)}` : `บันทึกแล้ว บัญชีเงินบ้านติดลบ ${baht(-bal)}`);
+    return closeSheet(() => { const bal = totals().home.balance; commit(bal >= 0 ? `บันทึกแล้ว บัญชีเงินบ้านคงเหลือ ${baht(bal)}` : `บันทึกแล้ว บัญชีเงินบ้านติดลบ ${baht(-bal)}`); });
   }
-  if (a === "del-home") { state.homeLedger = state.homeLedger.filter(x => x.id !== el.dataset.id); $("#sheet-root").innerHTML = ""; return commit("ลบรายการแล้ว"); }
+  if (a === "del-home") { state.homeLedger = state.homeLedger.filter(x => x.id !== el.dataset.id); return closeSheet(() => commit("ลบรายการแล้ว")); }
 
   if (a === "save-ev") {
     const name = $("#f-name").value.trim();
     if (!name) { $("#f-err").innerHTML = `<div class="hint bad">ใส่ชื่องานก่อน</div>`; return; }
     const place = $("#f-place").value.trim();
     const existing = state.events.find(e => e.id === el.dataset.ev);
-    if (existing) { existing.name = name; existing.place = place; $("#sheet-root").innerHTML = ""; return commit("แก้ข้อมูลงานแล้ว"); }
+    if (existing) { existing.name = name; existing.place = place; return closeSheet(() => commit("แก้ข้อมูลงานแล้ว")); }
     const costs = {}; COSTS.forEach(([k]) => costs[k] = toNum($("#n-" + k)?.value));
     const e = { id: uid(), name, place, status: "open", created: today(), costs, days: [] };
-    state.events.push(e); view.eventId = null; view.tab = "home"; view.homeEv = e.id; $("#sheet-root").innerHTML = ""; return commit(`สร้างงาน “${name}” แล้ว`);
+    state.events.push(e); view.eventId = null; view.tab = "home"; view.homeEv = e.id; return closeSheet(() => commit(`สร้างงาน “${name}” แล้ว`));
   }
   if (a === "del-ev") {
     if (!confirm("ลบงานนี้และยอดขายทั้งหมดของงาน? ลบแล้วเอากลับมาไม่ได้")) return;
     state.events = state.events.filter(e => e.id !== el.dataset.ev);
     state.purchases.forEach(p => { if (p.eventId === el.dataset.ev) p.eventId = null; });
-    view.eventId = null; $("#sheet-root").innerHTML = ""; return commit("ลบงานแล้ว");
+    view.eventId = null; return closeSheet(() => commit("ลบงานแล้ว"));
   }
   if (a === "toggle-ev") {
     const e = state.events.find(x => x.id === el.dataset.ev); e.status = e.status === "open" ? "closed" : "open";
@@ -719,11 +730,6 @@ document.addEventListener("change", ev => {
     const e = state.events.find(x => x.id === t.dataset.ev); if (!e) return;
     e.costs[t.dataset.cost] = toNum(t.value); commit("บันทึกค่าใช้จ่ายแล้ว");
   }
-  if (t.dataset.text) {
-    const k = t.dataset.text;
-    state.settings[k] = k === "notes" ? t.value.split("\n").map(x => x.trim()).filter(Boolean) : t.value.trim();
-    commit("บันทึกแล้ว");
-  }
   if (t.dataset.set) {
     let n = toNum(t.value) ?? 0;
     if (t.dataset.set === "costPct" || t.dataset.set === "buyPct") n = Math.min(t.dataset.set === "buyPct" ? 150 : 100, Math.max(1, n));
@@ -736,6 +742,22 @@ document.addEventListener("change", ev => {
   }
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && $(".scrim")) closeSheet(); });
+
+/* กดปุ่มแล้วยุบตัวลงนิดหน่อย ให้รู้สึกว่ากดโดนจริงๆ */
+const pressable = t => t.closest && t.closest(".btn, .chip, .item, .seg-btn, .nav button");
+document.addEventListener("pointerdown", e => {
+  if (reduceMotion || !window.gsap) return;
+  const el = pressable(e.target); if (!el) return;
+  gsap.to(el, { scale: .96, duration: .08, ease: "power1.out", overwrite: true });
+});
+const releasePress = e => {
+  if (reduceMotion || !window.gsap) return;
+  const el = pressable(e.target); if (!el) return;
+  gsap.to(el, { scale: 1, duration: .18, ease: "power2.out", overwrite: true });
+};
+document.addEventListener("pointerup", releasePress);
+document.addEventListener("pointercancel", releasePress);
+document.addEventListener("pointerleave", releasePress, true);
 
 render();
 })();
