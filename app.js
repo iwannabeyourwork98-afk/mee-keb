@@ -1,6 +1,7 @@
 (function(){
 const LS_KEY = "mom-shop-money-v1";
 const APP_VERSION = "2026.10.25";
+const WIPE_PIN = "2026";
 const COSTS = [["rent","ค่าที่"],["elec","ค่าไฟ"],["fuel","ค่าน้ำมัน"],["hotel","ค่าที่พัก"],["other","อื่นๆ"]];
 const KINDS = ["เสื้อ","กางเกง","เดรส","กระโปรง","อื่นๆ"];
 const HOME_OUT_KINDS = ["ค่ากินใช้","ส่งน้อง","ผ่อนรถ","ให้ย่า/ยาย","เงินเดือนย่า","อื่นๆ"];
@@ -491,7 +492,7 @@ function settingsView(){
   </section>
   <section class="card"><h2 class="h2">ข้อมูล</h2>
     <p class="label" style="margin:0 0 8px">${isSample ? "ตอนนี้เป็นข้อมูลตัวอย่าง" : apiUrl ? "บันทึกออนไลน์ เปิดจากเครื่องอื่นก็เห็นข้อมูลเดียวกัน" : "บันทึกไว้ในเครื่องนี้เครื่องเดียว ยังไม่เชื่อมออนไลน์"}</p>
-    ${isSample ? `<button class="btn primary" style="width:100%" data-act="start-real">ล้างตัวอย่าง เริ่มใช้จริง</button>` : `<button class="btn danger" data-act="wipe">ลบข้อมูลทั้งหมด</button>`}
+    ${isSample ? `<button class="btn primary" style="width:100%" data-act="start-real">ล้างตัวอย่าง เริ่มใช้จริง</button>` : `<details><summary>สำหรับช่างเทคนิค (ลูก)</summary><button class="btn danger" style="margin-top:8px" data-act="wipe">ลบข้อมูลทั้งหมด</button></details>`}
     <p class="label" style="margin:10px 0 0">เวอร์ชัน ${APP_VERSION}</p>
   </section></div>`;
 }
@@ -602,6 +603,16 @@ function homeSheet(entryId, defaultType){
       <button class="btn primary" data-act="save-home" data-id="${x ? x.id : ""}">บันทึก</button></div>`);
 }
 
+function wipeSheet(){
+  openSheet(`<h3>ลบข้อมูลทั้งหมด</h3>
+    <div class="hint bad">ลบแล้วเอากลับมาไม่ได้ ทั้งงาน ยอดขาย ซื้อของ และรายรับรายจ่ายส่วนตัว</div>
+    <div class="field"><label for="f-pin">ใส่รหัส 4 หลักก่อน (ถามลูก)</label>
+      <input class="in" id="f-pin" inputmode="numeric" autofocus placeholder="••••"></div>
+    <div id="f-err"></div>
+    <div class="foot"><button class="btn soft" data-act="close">ยกเลิก</button>
+      <button class="btn danger" data-act="wipe-confirm">ลบข้อมูลทั้งหมด</button></div>`);
+}
+
 function newEventSheet(evId){
   const ev = state.events.find(e => e.id === evId);
   openSheet(`<h3>${ev ? "แก้ข้อมูลงาน" : "สร้างงานใหม่"}</h3>
@@ -678,7 +689,12 @@ document.addEventListener("click", async ev => {
     if (!confirm("ล้างข้อมูลตัวอย่าง แล้วเริ่มจดของจริงเลยไหม")) return;
     state = blank(); isSample = false; view.eventId = null; view.tab = "home"; return commit("เริ่มใช้จริงแล้ว สร้างงานแรกได้เลย");
   }
-  if (a === "wipe") { if (!confirm("ลบข้อมูลทั้งหมด? ลบแล้วเอากลับมาไม่ได้")) return; state = blank(); view.eventId = null; return commit("ลบข้อมูลแล้ว"); }
+  if (a === "wipe") return wipeSheet();
+  if (a === "wipe-confirm") {
+    if (($("#f-pin")?.value || "").trim() !== WIPE_PIN) { $("#f-err").innerHTML = `<div class="hint bad">รหัสไม่ถูกต้อง ไม่ได้ลบอะไรทั้งนั้น</div>`; return; }
+    state = blank(); view.eventId = null; view.tab = "home";
+    return closeSheet(() => commit("ลบข้อมูลทั้งหมดแล้ว"));
+  }
 
   if (a === "save-sale") {
     const amt = toNum($("#f-amt").value), date = $("#f-date").value, target = state.events.find(e => e.id === $("#f-ev").value);
