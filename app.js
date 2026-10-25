@@ -226,11 +226,10 @@ function walletCard(t){
 function homeCard(t){
   const h = t.home;
   const neg = h.balance < 0;
-  return `<section class="tag home ${neg ? "over" : ""}" aria-label="บัญชีเงินบ้าน">
-    <div class="k">${neg ? "บัญชีเงินบ้านติดลบ" : "บัญชีเงินบ้านคงเหลือ"}</div>
+  return `<section class="tag home ${neg ? "over" : ""}" aria-label="บัญชีรายรับรายจ่ายส่วนตัว">
+    <div class="k">${neg ? "รายจ่ายมากกว่ารายรับ (สะสม)" : "เหลือสะสมตั้งแต่เริ่มจด"}</div>
     <div class="big num" data-count="${Math.abs(h.balance)}">${baht(Math.abs(h.balance))}</div>
-    <div class="row num"><span>รับเข้ารวม ${baht(h.in)}</span><span>จ่ายออกรวม ${baht(h.out)}</span></div>
-    <div class="rule">ตอนนี้ร้านมีเงินสดอยู่ประมาณ ${baht(t.cash)} · ไว้เป็นข้อมูลตัดสินใจ ไม่ได้หักจากอะไร</div>
+    <div class="row num"><span>รายรับรวม ${baht(h.in)}</span><span>รายจ่ายรวม ${baht(h.out)}</span></div>
   </section>`;
 }
 
@@ -281,7 +280,7 @@ function dashView(){
   </div>`;
 }
 
-/* หน้าเงินบ้าน แยกออกมาต่างหาก ไม่ปนกับหน้าร้าน */
+/* หน้ารายรับรายจ่ายส่วนตัว แยกคนละเล่มกับเงินร้าน ไม่หักกัน */
 function ledgerView(){
   const t = totals();
   const all = [...state.homeLedger].sort((a, b) => b.date.localeCompare(a.date));
@@ -289,14 +288,14 @@ function ledgerView(){
     <div class="col">
       ${homeCard(t)}
       <div class="actions">
-        <button class="btn primary huge-btn" data-act="home-pay" data-type="in"><span class="plus">+</span> รับเข้า</button>
-        <button class="btn soft huge-btn" data-act="home-pay" data-type="out"><span class="plus">+</span> จ่ายออก</button>
+        <button class="btn primary huge-btn" data-act="home-pay" data-type="in"><span class="plus">+</span> รายรับ</button>
+        <button class="btn soft huge-btn" data-act="home-pay" data-type="out"><span class="plus">+</span> รายจ่าย</button>
       </div>
       ${monthTable()}
     </div>
     <div class="col">
       <section class="card"><h2 class="h2">รายการทั้งหมด <small>${all.length} รายการ</small></h2>
-        <div class="list">${all.length ? all.map(homeLedgerRow).join("") : `<div class="empty">ยังไม่มีรายการ กด "รับเข้า" หรือ "จ่ายออก" เพื่อเริ่มจด</div>`}</div>
+        <div class="list">${all.length ? all.map(homeLedgerRow).join("") : `<div class="empty">ยังไม่มีรายการ กด "รายรับ" หรือ "รายจ่าย" เพื่อเริ่มจด</div>`}</div>
       </section>
     </div>
   </div>`;
@@ -311,8 +310,8 @@ function monthTable(){
     const outSum = entries.filter(x => x.type === "out").reduce((a, x) => a + x.amount, 0);
     return { key, inSum, outSum, net: inSum - outSum };
   });
-  return `<section class="card"><h2 class="h2">เงินบ้านแต่ละเดือน</h2>
-    <div style="overflow-x:auto"><table class="mtable num"><thead><tr><th>เดือน</th><th>รับเข้า</th><th>จ่ายออก</th><th>สุทธิ</th></tr></thead>
+  return `<section class="card"><h2 class="h2">สรุปแต่ละเดือน</h2>
+    <div style="overflow-x:auto"><table class="mtable num"><thead><tr><th>เดือน</th><th>รายรับ</th><th>รายจ่าย</th><th>สุทธิ</th></tr></thead>
     <tbody>${rows.map(m => `<tr><td>${thMonth(m.key, { month: "short", year: "2-digit" })}</td><td>${fmt(m.inSum)}</td><td>${fmt(m.outSum)}</td><td class="${m.net < 0 ? "bad" : "good"}">${m.net < 0 ? "−" : ""}${fmt(Math.abs(m.net))}</td></tr>`).join("")}</tbody></table></div></section>`;
 }
 
@@ -340,17 +339,17 @@ function compareCard(t){
   if (!dates.length) return "";
   dates.sort();
   const calDays = Math.max(1, Math.round((new Date(today() + "T12:00:00") - new Date(dates[0] + "T12:00:00")) / 864e5) + 1);
-  if (calDays < 7) return `<section class="card"><h2 class="h2">ร้านเลี้ยงบ้านไหวไหม</h2><p class="label" style="margin:0">ข้อมูลยังน้อยไป ใช้ไปสัก 1 สัปดาห์แอปจะเริ่มบอกได้</p></section>`;
+  if (calDays < 7) return `<section class="card"><h2 class="h2">ร้านเลี้ยงค่าใช้จ่ายไหวไหม</h2><p class="label" style="margin:0">ข้อมูลยังน้อยไป ใช้ไปสัก 1 สัปดาห์แอปจะเริ่มบอกได้</p></section>`;
   const profitPerDay = t.profit / calDays, homePerDay = t.home.out / calDays, diff = profitPerDay - homePerDay, ok = diff >= 0;
   return `<section class="card">
-    <h2 class="h2">ร้านเลี้ยงบ้านไหวไหม <small>เฉลี่ยจาก ${calDays} วันที่ผ่านมา</small></h2>
+    <h2 class="h2">ร้านเลี้ยงค่าใช้จ่ายไหวไหม <small>เฉลี่ยจาก ${calDays} วันที่ผ่านมา</small></h2>
     <div class="pair">
       <div class="stat"><div class="label">ร้านทำกำไรเฉลี่ย/วัน</div><div class="v num">${baht(profitPerDay)}</div></div>
-      <div class="stat"><div class="label">บ้านใช้จ่ายเฉลี่ย/วัน</div><div class="v num">${baht(homePerDay)}</div></div>
+      <div class="stat"><div class="label">รายจ่ายส่วนตัวเฉลี่ย/วัน</div><div class="v num">${baht(homePerDay)}</div></div>
     </div>
     <div class="hint ${ok ? "good" : "bad"}" style="margin-top:10px">${ok
-      ? `ร้านเลี้ยงบ้านไหว เหลือเก็บเข้าร้านเฉลี่ยวันละ <b class="num">${baht(diff)}</b>`
-      : `ตอนนี้บ้านใช้มากกว่าที่ร้านทำกำไรได้ เฉลี่ยวันละ <b class="num">${baht(-diff)}</b> ส่วนนี้ไปดึงจากเงินทุนซื้อของ`}</div>
+      ? `ร้านเลี้ยงไหว เหลือเก็บเข้าร้านเฉลี่ยวันละ <b class="num">${baht(diff)}</b>`
+      : `ตอนนี้รายจ่ายส่วนตัวมากกว่าที่ร้านทำกำไรได้ เฉลี่ยวันละ <b class="num">${baht(-diff)}</b> ส่วนนี้ไปดึงจากเงินทุนซื้อของ`}</div>
   </section>`;
 }
 
@@ -388,7 +387,7 @@ function purchaseRow(p){
 function homeLedgerRow(x){
   const isIn = x.type === "in";
   return `<button class="item" data-act="home-pay" data-id="${x.id}">
-    <span class="grow"><span class="t">${esc(x.note || (isIn ? "รับเข้า" : "จ่ายออก"))}</span><br><span class="s">${thDate(x.date)}</span></span>
+    <span class="grow"><span class="t">${esc(x.note || (isIn ? "รายรับ" : "รายจ่าย"))}</span><br><span class="s">${thDate(x.date)}</span></span>
     <span class="amt num" style="color:${isIn ? "var(--good)" : "inherit"}">${baht(isIn ? x.amount : -x.amount)}</span></button>`;
 }
 
@@ -585,17 +584,16 @@ function homeSheet(entryId, defaultType){
   const x = state.homeLedger.find(e => e.id === entryId);
   const t = totals();
   const type = x ? x.type : (defaultType || "out");
-  openSheet(`<h3>${x ? "แก้รายการ" : "จดบัญชีเงินบ้าน"}</h3>
-    <div class="hint info">ตอนนี้ร้านมีเงินสดอยู่ประมาณ <b class="num">${baht(t.cash)}</b></div>
+  openSheet(`<h3>${x ? "แก้รายการ" : "จดรายรับรายจ่าย"}</h3>
     <div class="field"><label>รายการนี้เป็น</label>
       <div class="seg">
-        <button type="button" class="seg-btn" data-act="ledger-type" data-type="in" aria-pressed="${type === "in" ? "true" : "false"}">รับเข้า</button>
-        <button type="button" class="seg-btn" data-act="ledger-type" data-type="out" aria-pressed="${type === "out" ? "true" : "false"}">จ่ายออก</button>
+        <button type="button" class="seg-btn" data-act="ledger-type" data-type="in" aria-pressed="${type === "in" ? "true" : "false"}">รายรับ</button>
+        <button type="button" class="seg-btn" data-act="ledger-type" data-type="out" aria-pressed="${type === "out" ? "true" : "false"}">รายจ่าย</button>
       </div>
     </div>
     <div class="field"><label for="f-amt">จำนวนเงิน (บาท)</label><input class="in huge" id="f-amt" inputmode="numeric" autofocus placeholder="0" value="${x ? fmt(x.amount) : ""}"></div>
     <div class="field"><label for="f-note">ค่าอะไร (พิมพ์เองได้ ไม่ต้องพิมพ์ก็ได้)</label>
-      <input class="in" id="f-note" placeholder="เช่น ค่าไฟเดือนนี้, ซื้อของใช้ในบ้าน" value="${esc(x?.note || "")}">
+      <input class="in" id="f-note" placeholder="เช่น ค่าไฟเดือนนี้, ซื้อของใช้" value="${esc(x?.note || "")}">
       <div class="chips" id="in-chips" ${type === "in" ? "" : "hidden"}>${HOME_IN_KINDS.map(k => `<button class="chip" type="button" data-act="home-chip">${k}</button>`).join("")}</div>
       <div class="chips" id="out-chips" ${type === "out" ? "" : "hidden"}>${HOME_OUT_KINDS.map(k => `<button class="chip" type="button" data-act="home-chip">${k}</button>`).join("")}</div>
     </div>
@@ -624,8 +622,7 @@ function shareSheet(ev){
     `ขายได้ ${baht(c.sales)}`,
     `กำไรประมาณ ${baht(c.profit)}${c.missing.length ? ` (ยังไม่รวม${c.missing.join(", ")})` : ""}`,
     w.wallet >= 0 ? `🛒 งานนี้ซื้อของได้ไม่เกิน ${baht(w.wallet)}` : `🛑 งานนี้ซื้อของเกินงบ ${baht(-w.wallet)} รอขายเพิ่มก่อนนะ`,
-    `💰 ร้านมีเงินสดอยู่ประมาณ ${baht(t.cash)}`,
-    t.home.balance >= 0 ? `🏠 บัญชีเงินบ้านคงเหลือ ${baht(t.home.balance)}` : `🏠 บัญชีเงินบ้านติดลบ ${baht(-t.home.balance)}`].join("\n");
+    `💰 ร้านมีเงินสดอยู่ประมาณ ${baht(t.cash)}`].join("\n");
   openSheet(`<h3>ข้อความส่ง LINE</h3><textarea class="in" id="f-text" readonly>${esc(text)}</textarea>
     <div class="foot"><button class="btn soft" data-act="close">ปิด</button><button class="btn primary" data-act="copy">คัดลอกข้อความ</button></div>`);
 }
@@ -715,7 +712,7 @@ document.addEventListener("click", async ev => {
     const note = ($("#f-note")?.value || "").trim();
     const rec = { id: el.dataset.id || uid(), date, amount: amt, note, type };
     const i = state.homeLedger.findIndex(x => x.id === rec.id); if (i > -1) state.homeLedger[i] = rec; else state.homeLedger.push(rec);
-    return closeSheet(() => { const bal = totals().home.balance; commit(bal >= 0 ? `บันทึกแล้ว บัญชีเงินบ้านคงเหลือ ${baht(bal)}` : `บันทึกแล้ว บัญชีเงินบ้านติดลบ ${baht(-bal)}`); });
+    return closeSheet(() => { const bal = totals().home.balance; commit(bal >= 0 ? `บันทึกแล้ว เหลือสะสม ${baht(bal)}` : `บันทึกแล้ว ติดลบสะสม ${baht(-bal)}`); });
   }
   if (a === "del-home") { state.homeLedger = state.homeLedger.filter(x => x.id !== el.dataset.id); return closeSheet(() => commit("ลบรายการแล้ว")); }
 
