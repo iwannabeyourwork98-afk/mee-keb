@@ -1,5 +1,6 @@
 (function(){
 const LS_KEY = "mom-shop-money-v1";
+const APP_VERSION = "2026.10.25";
 const COSTS = [["rent","ค่าที่"],["elec","ค่าไฟ"],["fuel","ค่าน้ำมัน"],["hotel","ค่าที่พัก"],["other","อื่นๆ"]];
 const KINDS = ["เสื้อ","กางเกง","เดรส","กระโปรง","อื่นๆ"];
 const HOME_OUT_KINDS = ["ค่ากินใช้","ส่งน้อง","ผ่อนรถ","ให้ย่า/ยาย","เงินเดือนย่า","อื่นๆ"];
@@ -53,11 +54,17 @@ const blank = () => ({ settings: { costPct: 67, buyPct: 80, startBudget: 0, wage
 
 /* ---------- state & storage ---------- */
 const LS_API_URL = "momShopApiUrl";
-let apiUrl = localStorage.getItem(LS_API_URL) || "";
-let state, isSample = false, lastJSON = "", syncing = false;
+/* ลิงก์ข้อมูลฝังมากับตัวแอปเลย แม่ไม่ต้องวางเอง (ถ้าวันหลังย้ายชีต ค่อยวางทับในหน้าตั้งค่า) */
+const API_URL_BUILT_IN = "https://script.google.com/macros/s/AKfycbzGcbN-KGzgov_89vcykPDEBweMhDw5Csm3_kpP5o5k_Ee-vGgxZp3JDIcOpZ0pCGbt/exec";
+const savedApiUrl = localStorage.getItem(LS_API_URL);
+let apiUrl = savedApiUrl === null ? API_URL_BUILT_IN : savedApiUrl;
+let state, isSample = false, lastJSON = "", syncing = false, loading = false;
 const view = { tab: "home", eventId: null };
 try { const raw = localStorage.getItem(LS_KEY); if (raw) state = JSON.parse(raw); } catch(e) {}
-if (!state || !state.events) { state = makeSample(); isSample = true; }
+if (!state || !state.events) {
+  if (apiUrl) { state = blank(); loading = true; }
+  else { state = makeSample(); isSample = true; }
+}
 if (!Array.isArray(state.homeLedger)) state.homeLedger = (state.homeExpenses || []).map(x => ({ ...x, type: "out" }));
 if (state.settings.wagePerDay == null) state.settings.wagePerDay = 4000;
 
@@ -98,11 +105,11 @@ async function syncFromServer(){
   if (syncing) return; syncing = true;
   try {
     const remote = await apiGet();
-    if (!remote || !remote.events) return;
+    if (!remote || !remote.events) { loading = false; render(); return; }
     const json = JSON.stringify(remote);
-    if (json === lastJSON) return;
+    if (json === lastJSON) { if (loading) { loading = false; render(); } return; }
     if (!Array.isArray(remote.homeLedger)) remote.homeLedger = (remote.homeExpenses || []).map(x => ({ ...x, type: "out" }));
-    state = remote; isSample = false; lastJSON = json;
+    state = remote; isSample = false; loading = false; lastJSON = json;
     try { localStorage.setItem(LS_KEY, json); } catch(e) {}
     if (!$(".scrim")) render();
   } finally { syncing = false; }
@@ -114,7 +121,7 @@ async function connectApi(url){
   const remote = await apiGet();
   if (remote && remote.events && remote.events.length) {
     if (!Array.isArray(remote.homeLedger)) remote.homeLedger = (remote.homeExpenses || []).map(x => ({ ...x, type: "out" }));
-    state = remote; isSample = false; lastJSON = JSON.stringify(remote);
+    state = remote; isSample = false; loading = false; lastJSON = JSON.stringify(remote);
     try { localStorage.setItem(LS_KEY, lastJSON); } catch(e) {}
     toast("ดึงข้อมูลจากออนไลน์มาแล้ว");
   } else if (!isSample) {
@@ -168,7 +175,7 @@ function shopHistory(){
 /* ---------- views ---------- */
 function render(){
   document.querySelectorAll(".nav button").forEach(b => b.setAttribute("aria-current", b.dataset.tab === view.tab && !view.eventId ? "page" : "false"));
-  const banner = isSample ? `<div class="banner"><span><b>ข้อมูลตัวอย่าง</b> ลองกดเล่นได้ ยังไม่บันทึกจริง</span><button data-act="start-real">เริ่มใช้จริง</button></div>` : "";
+  const banner = loading ? `<div class="banner"><span>กำลังโหลดข้อมูลจากออนไลน์ รอสักครู่นะ…</span></div>` : isSample ? `<div class="banner"><span><b>ข้อมูลตัวอย่าง</b> ลองกดเล่นได้ ยังไม่บันทึกจริง</span><button data-act="start-real">เริ่มใช้จริง</button></div>` : "";
   let body;
   const picked = view.eventId && state.events.find(e => e.id === view.eventId);
   if (picked) body = eventPage(picked, false);
@@ -475,15 +482,18 @@ function settingsView(){
     ${f("wagePerDay", "ค่าแรงตัวเองต่อวัน (บาท)", "แค่ข้อความเตือนตอนใส่ยอดขาย ไม่ได้หักหรือโอนเงินให้อัตโนมัติ แม่ต้องแยกเงินเองตามนี้")}
   </section>
   <section class="card set" style="display:grid;gap:16px">
-    <h2 class="h2" style="margin:0">เชื่อมข้อมูลออนไลน์</h2>
-    <div class="field"><label for="s-api">ลิงก์เชื่อมข้อมูล (Apps Script Web App URL)</label>
+    <h2 class="h2" style="margin:0">เชื่อมข้อมูลออนไลน์ <small>${apiUrl ? "เชื่อมแล้ว ไม่ต้องตั้งอะไร" : "ยังไม่ได้เชื่อม"}</small></h2>
+    <div class="hint ${apiUrl ? "ok" : "info"}">${apiUrl ? "แอปนี้เชื่อมข้อมูลมาให้แล้วตั้งแต่ติดตั้ง จดอะไรไว้ก็เห็นตรงกันทุกเครื่อง" : "ยังไม่ได้เชื่อม ข้อมูลเก็บในเครื่องนี้เครื่องเดียว"}</div>
+    <details><summary>ช่างเทคนิค: เปลี่ยนลิงก์เชื่อมข้อมูล</summary>
+    <div class="field" style="margin-top:10px"><label for="s-api">ลิงก์เชื่อมข้อมูล (Apps Script Web App URL)</label>
       <input class="in" id="s-api" data-api="1" placeholder="https://script.google.com/macros/s/xxx/exec" value="${esc(apiUrl)}">
-      <p>วางลิงก์จากขั้นตอน deploy Apps Script (ดู apps_script/README.md) ทีเดียว เครื่องนี้จะจำไว้แล้วซิงก์ข้อมูลให้เอง เปิดจากเครื่องอื่นด้วยลิงก์เดียวกันก็เห็นข้อมูลเดียวกัน</p>
-    </div>
+      <p>ปกติไม่ต้องแตะ · วางลิงก์จากขั้นตอน deploy Apps Script (ดู apps_script/README.md) ทีเดียว เครื่องนี้จะจำไว้แล้วซิงก์ข้อมูลให้เอง เปิดจากเครื่องอื่นด้วยลิงก์เดียวกันก็เห็นข้อมูลเดียวกัน</p>
+    </div></details>
   </section>
   <section class="card"><h2 class="h2">ข้อมูล</h2>
     <p class="label" style="margin:0 0 8px">${isSample ? "ตอนนี้เป็นข้อมูลตัวอย่าง" : apiUrl ? "บันทึกออนไลน์ เปิดจากเครื่องอื่นก็เห็นข้อมูลเดียวกัน" : "บันทึกไว้ในเครื่องนี้เครื่องเดียว ยังไม่เชื่อมออนไลน์"}</p>
     ${isSample ? `<button class="btn primary" style="width:100%" data-act="start-real">ล้างตัวอย่าง เริ่มใช้จริง</button>` : `<button class="btn danger" data-act="wipe">ลบข้อมูลทั้งหมด</button>`}
+    <p class="label" style="margin:10px 0 0">เวอร์ชัน ${APP_VERSION}</p>
   </section></div>`;
 }
 

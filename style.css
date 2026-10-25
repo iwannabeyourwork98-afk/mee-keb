@@ -157,6 +157,7 @@ button{cursor:pointer}
 .hint.good{background:var(--good-soft);color:var(--good)}
 .hint.bad{background:var(--bad-soft);color:var(--bad)}
 .hint.info{background:var(--sunk);color:var(--ink2)}
+.hint.ok{background:var(--good-soft);color:var(--good)}
 .sheet .foot{display:grid;grid-template-columns:1fr 2fr;gap:10px}
 details summary{cursor:pointer;color:var(--accent);font-size:15px;padding:4px 0}
 textarea.in{min-height:170px;font-size:15px;line-height:1.5}
